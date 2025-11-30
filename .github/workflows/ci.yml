@@ -1,0 +1,61 @@
+name: CI - Integration Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services: {}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Display Java & Maven versions
+        run: |
+          java -version
+          mvn -version
+
+      - name: Start MockServer (docker-compose)
+        working-directory: ./mockserver
+        run: |
+          docker-compose up -d
+        # Allow some time for MockServer to come up
+      - name: Wait for MockServer
+        run: |
+          for i in {1..20}; do
+            if curl -sS http://localhost:1080 > /dev/null; then
+              echo "MockServer up"
+              break
+            fi
+            echo "Waiting for MockServer..."
+            sleep 1
+          done
+
+      - name: Run Maven tests
+        run: mvn -U -B test -DskipIT=false
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+
+      - name: Upload test-cases.xlsx
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-cases
+          path: test-cases.xlsx
