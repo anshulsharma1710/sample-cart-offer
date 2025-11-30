@@ -9,7 +9,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    services: {}
 
     steps:
       - name: Checkout repo
@@ -27,21 +26,42 @@ jobs:
           java -version
           mvn -version
 
+      # Install dependencies required for docker-compose (if not present)
+      - name: Install prerequisites (curl, unzip)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y curl unzip
+
+      # Download docker-compose (standalone binary) and make it executable
+      - name: Install docker-compose CLI
+        run: |
+          # Use a stable compose v2 release. Update version here if desired.
+          COMPOSE_VERSION="v2.20.2"
+          echo "Installing docker-compose ${COMPOSE_VERSION}"
+          sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          # verify
+          docker-compose version
+
       - name: Start MockServer (docker-compose)
         working-directory: ./mockserver
         run: |
-          docker-compose up -d
-        # Allow some time for MockServer to come up
+          # Use the installed docker-compose to start mockserver
+          /usr/local/bin/docker-compose up -d
+
       - name: Wait for MockServer
         run: |
-          for i in {1..20}; do
+          echo "Waiting for MockServer to be reachable on http://localhost:1080 ..."
+          for i in {1..30}; do
             if curl -sS http://localhost:1080 > /dev/null; then
               echo "MockServer up"
               break
             fi
-            echo "Waiting for MockServer..."
+            echo "Waiting for MockServer... ($i)"
             sleep 1
           done
+          # Final check
+          curl -sS http://localhost:1080 || (echo "MockServer not reachable" && exit 1)
 
       - name: Run Maven tests
         run: mvn -U -B test -DskipIT=false
